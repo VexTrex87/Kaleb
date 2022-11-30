@@ -4,23 +4,21 @@ import math
 brain = Brain()
 controller = Controller()
 
-front_left_wheel = Motor(Ports.PORT4)
-middle_left_wheel = Motor(Ports.PORT5)
-back_left_wheel = Motor(Ports.PORT6)
-left_wheels = MotorGroup(front_left_wheel, middle_left_wheel, back_left_wheel)
+front_left_wheel = Motor(Ports.PORT3)
+back_left_wheel = Motor(Ports.PORT4)
+left_wheels = MotorGroup(front_left_wheel, back_left_wheel)
 
 front_right_wheel = Motor(Ports.PORT1, True)
-middle_right_wheel = Motor(Ports.PORT2, True)
-back_right_wheel = Motor(Ports.PORT3, True)
-right_wheels = MotorGroup(front_right_wheel, middle_right_wheel, back_right_wheel)
+back_right_wheel = Motor(Ports.PORT2, True)
+right_wheels = MotorGroup(front_right_wheel, back_right_wheel)
 
 drivetrain = DriveTrain(left_wheels, right_wheels)
-intaker = Motor(Ports.PORT7, GearSetting.RATIO_6_1)
-launcher = Motor(Ports.PORT8, GearSetting.RATIO_6_1)
-inertia_sensor = Inertial(Ports.PORT9)
-gps_sensor = Gps(Ports.PORT10)
+intaker = Motor(Ports.PORT5, GearSetting.RATIO_6_1)
+indexer = Motor(Ports.PORT6, GearSetting.RATIO_6_1)
+launcher = Motor(Ports.PORT7, GearSetting.RATIO_6_1)
+inertia_sensor = Inertial(Ports.PORT8)
+gps_sensor = Gps(Ports.PORT9)
 
-indexer = DigitalOut(brain.three_wire_port.a)
 expansion = DigitalOut(brain.three_wire_port.b)
 
 class Robot():
@@ -35,6 +33,10 @@ class Robot():
         launcher.spin(FORWARD)
 
         print('Ready')
+
+        while True:
+            self.update_brain()
+            wait(1, SECONDS)
 
     def driver_controlled(self):
         controller.axis1.changed(self.on_controller_changed)
@@ -111,9 +113,14 @@ class Robot():
 
     def launch(self):
         controller.rumble('.')
-        indexer.set(True)
-        wait(0.1, SECONDS)
-        indexer.set(False)
+
+        indexer.set_timeout(1, SECONDS)
+        indexer.set_stopping(COAST)
+        indexer.set_max_torque(100, PERCENT)
+
+        indexer.spin_for(FORWARD, 75, DEGREES, 100, PERCENT)
+        wait(0.5, SECONDS)
+        indexer.spin_for(REVERSE, 90, DEGREES, 100, PERCENT)
 
     def expand(self):
         controller.rumble('.')
@@ -128,6 +135,40 @@ class Robot():
 
         left_wheels.spin(FORWARD)
         right_wheels.spin(FORWARD)
+
+    def update_brain(self):
+        brain.screen.clear_screen()
+        brain.screen.set_cursor(1, 1)
+        brain.screen.set_font(FontType.MONO30)
+
+        drivetrain_temperature = drivetrain.temperature(PERCENT)
+        brain.screen.set_pen_color(drivetrain_temperature > 60 and Color.RED or Color.GREEN)
+        brain.screen.print('Drivetrain: ', round(drivetrain_temperature))
+        brain.screen.next_row()
+
+        intaker_temperature = intaker.temperature(PERCENT)
+        brain.screen.set_pen_color(intaker_temperature > 60 and Color.RED or Color.GREEN)
+        brain.screen.print('Intake: ', round(intaker_temperature))
+        brain.screen.next_row()
+
+        indexer_temperature = indexer.temperature(PERCENT)
+        brain.screen.set_pen_color(indexer_temperature > 60 and Color.RED or Color.GREEN)
+        brain.screen.print('Indexer: ', round(indexer_temperature))
+        brain.screen.next_row()
+
+        launcher_temperature = launcher.temperature(PERCENT)
+        brain.screen.set_pen_color(launcher_temperature > 60 and Color.RED or Color.GREEN)
+        brain.screen.print('Launcher: ', round(launcher_temperature))
+        brain.screen.next_row()
+
+        battery = brain.battery.capacity()
+        brain.screen.set_pen_color(battery < 20 and Color.RED or Color.GREEN)
+        brain.screen.print('Battery: ', round(battery))
+        brain.screen.next_row()
+
+        brain.screen.set_pen_color(Color.WHITE)
+        brain.screen.set_font(FontType.MONO60)
+        brain.screen.print('23322A (Orion)')
 
 if __name__ == '__main__':
     robot = Robot()
