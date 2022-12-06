@@ -13,11 +13,11 @@ back_right_wheel = Motor(Ports.PORT2, True)
 right_wheels = MotorGroup(front_right_wheel, back_right_wheel)
 
 drivetrain = DriveTrain(left_wheels, right_wheels)
-intaker = Motor(Ports.PORT5, GearSetting.RATIO_6_1)
-indexer = Motor(Ports.PORT6, GearSetting.RATIO_6_1)
-launcher = Motor(Ports.PORT7, GearSetting.RATIO_6_1)
-inertia_sensor = Inertial(Ports.PORT8)
-gps_sensor = Gps(Ports.PORT9)
+intaker = Motor(Ports.PORT16, GearSetting.RATIO_6_1)
+indexer = Motor(Ports.PORT6, GearSetting.RATIO_36_1)
+launcher = Motor(Ports.PORT17, GearSetting.RATIO_6_1)
+inertia_sensor = Inertial(Ports.PORT18)
+roller = Motor(Ports.PORT19, GearSetting.RATIO_36_1)
 
 expansion = DigitalOut(brain.three_wire_port.b)
 
@@ -27,10 +27,7 @@ class Robot():
 
         drivetrain.set_stopping(COAST)
         inertia_sensor.calibrate()
-
-        self.intake_forward()
-        launcher.set_velocity(100, PERCENT)
-        launcher.spin(FORWARD)
+        self.start_launcher(100)
 
         print('Ready')
 
@@ -42,11 +39,16 @@ class Robot():
         controller.axis1.changed(self.on_controller_changed)
         controller.axis3.changed(self.on_controller_changed)
 
-        controller.buttonL1.pressed(self.intake_forward)
-        controller.buttonL2.pressed(self.intake_reverse)
+        controller.buttonL1.pressed(self.start_intake)
+        controller.buttonL1.released(self.stop_intake)
+        controller.buttonL2.pressed(self.start_roller)
+        controller.buttonL2.released(self.stop_roller)
 
         controller.buttonR1.pressed(self.launch)
         controller.buttonR2.pressed(self.expand)
+
+        controller.buttonUp.pressed(self.start_launcher)
+        controller.buttonDown.pressed(self.stop_launcher)
 
     def autonomous(self):
         pass
@@ -57,26 +59,17 @@ class Robot():
     def programming_skills_right(self):
         pass
 
-    def move(self, target_distance, velocity):
+    def move(self, target_distance, velocity=100):
         WHEEL_CIRCUMFERENCE = math.pi * 3.4
 
         left_wheels.reset_position()
         right_wheels.reset_position()
         drivetrain.set_stopping(COAST)
-        drivetrain.set_drive_velocity(velocity, PERCENT)
-        drivetrain.drive(FORWARD)
-
-        ### PID STARTS HERE
-        Kp = 0.01
-        Kd = 0
-        Ki = 0
-
-        error = 0
-        last_error = 0
-        integral = 0
-        derivative = 0
+        drivetrain.set_drive_velocity(100, PERCENT)
 
         distance_traveled = 0
+
+        drivetrain.drive(FORWARD, velocity, PERCENT)
 
         while distance_traveled < target_distance:
             left_degrees = left_wheels.position(DEGREES)
@@ -84,46 +77,45 @@ class Robot():
             average_degrees = (left_degrees + right_degrees) / 2
             distance_traveled = average_degrees / 360 * WHEEL_CIRCUMFERENCE
 
-            error = target_distance - distance_traveled
-            integral += error
-            derivative = error - last_error
-
-            power = (error * Kp) + (integral * Ki) + (derivative * Kd)
-            print(error, error * Kp, integral * Ki, derivative * Kd, power)
-            drivetrain.set_drive_velocity(power, PERCENT)
-            last_error = error
             wait(0.02, SECONDS)
 
-            # PID ENDS HERE
-
-        drivetrain.stop(COAST)
+        drivetrain.stop(BRAKE)
 
     def turn(self, degrees):
         pass
 
-    def intake_forward(self):
-        controller.rumble('.')
+    def start_intake(self):
         intaker.set_velocity(100, PERCENT)
         intaker.spin(FORWARD)
 
-    def intake_reverse(self):
-        controller.rumble('.')
-        intaker.set_velocity(100, PERCENT)
-        intaker.spin(REVERSE)
+    def stop_intake(self):
+        intaker.stop()
+
+    def start_launcher(self, velocity=100):
+        launcher.set_velocity(velocity, PERCENT)
+        launcher.spin(FORWARD)
+
+    def stop_launcher(self):
+        launcher.stop(COAST)
 
     def launch(self):
-        controller.rumble('.')
-
         indexer.set_timeout(1, SECONDS)
-        indexer.set_stopping(COAST)
         indexer.set_max_torque(100, PERCENT)
+        indexer.set_stopping(HOLD)
+        indexer.set_velocity(100, PERCENT)
 
-        indexer.spin_for(FORWARD, 75, DEGREES, 100, PERCENT)
+        indexer.spin_for(FORWARD, 80, DEGREES, 100, PERCENT)
         wait(0.5, SECONDS)
         indexer.spin_for(REVERSE, 90, DEGREES, 100, PERCENT)
 
+    def start_roller(self):
+        roller.set_velocity(100, PERCENT)
+        roller.spin(FORWARD)
+
+    def stop_roller(self):
+        roller.stop()
+
     def expand(self):
-        controller.rumble('.')
         expansion.set(True)
 
     def on_controller_changed(self):
@@ -142,22 +134,22 @@ class Robot():
         brain.screen.set_font(FontType.MONO30)
 
         drivetrain_temperature = drivetrain.temperature(PERCENT)
-        brain.screen.set_pen_color(drivetrain_temperature > 60 and Color.RED or Color.GREEN)
+        brain.screen.set_pen_color(drivetrain_temperature >= 70 and Color.RED or Color.GREEN)
         brain.screen.print('Drivetrain: ', round(drivetrain_temperature))
         brain.screen.next_row()
 
         intaker_temperature = intaker.temperature(PERCENT)
-        brain.screen.set_pen_color(intaker_temperature > 60 and Color.RED or Color.GREEN)
+        brain.screen.set_pen_color(intaker_temperature >= 70 and Color.RED or Color.GREEN)
         brain.screen.print('Intake: ', round(intaker_temperature))
         brain.screen.next_row()
 
         indexer_temperature = indexer.temperature(PERCENT)
-        brain.screen.set_pen_color(indexer_temperature > 60 and Color.RED or Color.GREEN)
+        brain.screen.set_pen_color(indexer_temperature >= 70 and Color.RED or Color.GREEN)
         brain.screen.print('Indexer: ', round(indexer_temperature))
         brain.screen.next_row()
 
         launcher_temperature = launcher.temperature(PERCENT)
-        brain.screen.set_pen_color(launcher_temperature > 60 and Color.RED or Color.GREEN)
+        brain.screen.set_pen_color(launcher_temperature >= 70 and Color.RED or Color.GREEN)
         brain.screen.print('Launcher: ', round(launcher_temperature))
         brain.screen.next_row()
 
@@ -172,4 +164,3 @@ class Robot():
 
 if __name__ == '__main__':
     robot = Robot()
-    # robot.move(24, 100)
