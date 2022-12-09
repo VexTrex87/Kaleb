@@ -1,5 +1,6 @@
 from vex import *
 import math
+import time
 
 brain = Brain()
 controller = Controller()
@@ -12,11 +13,11 @@ front_right_wheel = Motor(Ports.PORT1, True)
 back_right_wheel = Motor(Ports.PORT2, True)
 right_wheels = MotorGroup(front_right_wheel, back_right_wheel)
 
-drivetrain = DriveTrain(left_wheels, right_wheels)
+inertia_sensor = Inertial(Ports.PORT18)
+drivetrain = SmartDrive(left_wheels, right_wheels, inertia_sensor)
 intaker = Motor(Ports.PORT16, GearSetting.RATIO_6_1)
 indexer = Motor(Ports.PORT6, GearSetting.RATIO_36_1)
 launcher = Motor(Ports.PORT17, GearSetting.RATIO_6_1)
-inertia_sensor = Inertial(Ports.PORT18)
 roller = Motor(Ports.PORT19, GearSetting.RATIO_36_1)
 
 expansion = DigitalOut(brain.three_wire_port.b)
@@ -26,8 +27,7 @@ class Robot():
         Competition(self.driver_controlled, self.autonomous)
 
         drivetrain.set_stopping(COAST)
-        inertia_sensor.calibrate()
-        self.start_launcher(100)
+        self.start_launcher()
 
         print('Ready')
 
@@ -51,7 +51,33 @@ class Robot():
         controller.buttonDown.pressed(self.stop_launcher)
 
     def autonomous(self):
-        pass
+        inertia_sensor.calibrate()
+        while inertia_sensor.is_calibrating():
+            wait(0.1, SECONDS)
+        inertia_sensor.set_heading(90, DEGREES)
+
+        start_time = time.time()
+
+        drivetrain.drive_for(REVERSE, 2, INCHES)
+        self.start_roller(100)
+        wait(0.25, SECONDS)
+        self.stop_roller()
+
+        drivetrain.drive_for(FORWARD, 6, INCHES, 60, PERCENT)
+        drivetrain.turn_to_heading(132, DEGREES, 60, PERCENT)
+        drivetrain.drive_for(FORWARD, 153, INCHES, 75, PERCENT)
+        drivetrain.turn_to_heading(90, DEGREES, 60, PERCENT)
+        drivetrain.drive_for(FORWARD, 10, INCHES, 60, PERCENT)
+        drivetrain.turn_to_heading(0, DEGREES, 60, PERCENT)
+        drivetrain.drive_for(REVERSE, 10, INCHES, 60, PERCENT)
+
+        self.start_roller(100)
+        wait(0.5, SECONDS)
+        self.stop_roller()
+
+        print(time.time() - start_time)
+
+        return
 
     def programming_skills_left(self):
         pass
@@ -60,6 +86,8 @@ class Robot():
         pass
 
     def move(self, target_distance, velocity=100):
+        print('moving', target_distance, velocity)
+
         WHEEL_CIRCUMFERENCE = math.pi * 3.4
 
         left_wheels.reset_position()
@@ -71,7 +99,7 @@ class Robot():
 
         drivetrain.drive(FORWARD, velocity, PERCENT)
 
-        while distance_traveled < target_distance:
+        while abs(distance_traveled - target_distance) > 1:
             left_degrees = left_wheels.position(DEGREES)
             right_degrees = right_wheels.position(DEGREES)
             average_degrees = (left_degrees + right_degrees) / 2
@@ -91,7 +119,7 @@ class Robot():
     def stop_intake(self):
         intaker.stop()
 
-    def start_launcher(self, velocity=100):
+    def start_launcher(self, velocity=75):
         launcher.set_velocity(velocity, PERCENT)
         launcher.spin(FORWARD)
 
@@ -101,15 +129,15 @@ class Robot():
     def launch(self):
         indexer.set_timeout(1, SECONDS)
         indexer.set_max_torque(100, PERCENT)
-        indexer.set_stopping(HOLD)
-        indexer.set_velocity(100, PERCENT)
 
-        indexer.spin_for(FORWARD, 80, DEGREES, 100, PERCENT)
-        wait(0.5, SECONDS)
-        indexer.spin_for(REVERSE, 90, DEGREES, 100, PERCENT)
+        indexer.spin(FORWARD, 100, PERCENT)
+        wait(0.25, SECONDS)
+        indexer.spin(REVERSE, 100, PERCENT)
+        wait(0.25, SECONDS)
+        indexer.stop(COAST)
 
-    def start_roller(self):
-        roller.set_velocity(100, PERCENT)
+    def start_roller(self, velocity=100):
+        roller.set_velocity(velocity, PERCENT)
         roller.spin(FORWARD)
 
     def stop_roller(self):
