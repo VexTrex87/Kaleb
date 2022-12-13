@@ -1,33 +1,51 @@
 from vex import *
-import math
 import time
 
 brain = Brain()
 controller = Controller()
 
-front_left_wheel = Motor(Ports.PORT3)
-back_left_wheel = Motor(Ports.PORT4)
+front_left_wheel = Motor(Ports.PORT17)
+back_left_wheel = Motor(Ports.PORT16)
 left_wheels = MotorGroup(front_left_wheel, back_left_wheel)
 
 front_right_wheel = Motor(Ports.PORT1, True)
 back_right_wheel = Motor(Ports.PORT2, True)
 right_wheels = MotorGroup(front_right_wheel, back_right_wheel)
 
-inertia_sensor = Inertial(Ports.PORT18)
-drivetrain = SmartDrive(left_wheels, right_wheels, inertia_sensor)
-intaker = Motor(Ports.PORT16, GearSetting.RATIO_6_1)
-indexer = Motor(Ports.PORT6, GearSetting.RATIO_36_1)
-launcher = Motor(Ports.PORT17, GearSetting.RATIO_6_1)
-roller = Motor(Ports.PORT19, GearSetting.RATIO_36_1)
+inertia_sensor = Inertial(Ports.PORT3)
+back_distance_sensor = Distance(Ports.PORT4)
+front_distance_sensor = Distance(Ports.PORT5)
+roller_sensor = Optical(Ports.PORT6)
+auton_selector = Bumper(brain.three_wire_port.b)
 
-expansion = DigitalOut(brain.three_wire_port.b)
+drivetrain = SmartDrive(left_wheels, right_wheels, inertia_sensor)
+intaker = Motor(Ports.PORT19, GearSetting.RATIO_6_1)
+indexer = Motor(Ports.PORT18, GearSetting.RATIO_36_1)
+launcher = Motor(Ports.PORT14, GearSetting.RATIO_6_1)
+roller = Motor(Ports.PORT13, GearSetting.RATIO_36_1)
+expansion = DigitalOut(brain.three_wire_port.a)
 
 class Robot():
     def __init__(self):
-        Competition(self.driver_controlled, self.autonomous)
+        Competition(self.driver_controlled, self.auton)
+        
+        self.selected_auton = 3
+        self.autons = [
+            {'name': 'LEFT SINGLE', 'action': self.left_single_auton}, 
+            {'name': 'LEFT DOUBLE', 'action': self.left_double_auton}, 
+            {'name': 'RIGHT SINGLE', 'action': self.right_single_auton}, 
+            {'name': 'PROGRAMMING SKILLS', 'action': self.programming_skills}]
+        
+        self.pre_auton()
+
+    def pre_auton(self):
+        auton_selector.pressed(self.select_auton)
 
         drivetrain.set_stopping(COAST)
-        self.start_launcher()
+
+        inertia_sensor.calibrate()
+        while inertia_sensor.is_calibrating():
+            wait(0.1, SECONDS)
 
         print('Ready')
 
@@ -50,67 +68,110 @@ class Robot():
         controller.buttonUp.pressed(self.start_launcher)
         controller.buttonDown.pressed(self.stop_launcher)
 
-    def autonomous(self):
-        inertia_sensor.calibrate()
-        while inertia_sensor.is_calibrating():
-            wait(0.1, SECONDS)
+    def left_single_auton(self):
+        # Move backward and get the back roller
+        inertia_sensor.set_heading(90, DEGREES)
+        self.start_launcher(100)
+
+        drivetrain.drive_for(REVERSE, 2, INCHES, 50, PERCENT)
+        roller.spin(FORWARD)
+        wait(0.5, SECONDS)
+        roller.stop(COAST)
+
+        # Launch 2 discs into the goal
+
+        drivetrain.drive_for(FORWARD, 7, INCHES, 50, PERCENT)
+        drivetrain.turn_to_heading(133, DEGREES)
+        drivetrain.drive_for(FORWARD, 70, INCHES, 50, PERCENT)
+
+        drivetrain.turn_to_heading(45, DEGREES)
+        self.launch()
+        wait(2, SECONDS)
+        self.launch()
+        wait(2, SECONDS)
+
+    def left_double_auton(self):
+        pass
+
+    def right_single_auton(self):
+        pass
+
+    def programming_skills(self):
+        ROLLER_DISTANCE = 8
         inertia_sensor.set_heading(90, DEGREES)
 
-        start_time = time.time()
+        # Get the back roller
 
-        drivetrain.drive_for(REVERSE, 2, INCHES)
-        self.start_roller(100)
-        wait(0.25, SECONDS)
-        self.stop_roller()
+        drivetrain.drive(REVERSE, 50, PERCENT)
+        while True:
+            if back_distance_sensor.object_distance(INCHES) < ROLLER_DISTANCE:
+                drivetrain.stop(COAST)
+                break
 
-        drivetrain.drive_for(FORWARD, 6, INCHES, 60, PERCENT)
-        drivetrain.turn_to_heading(132, DEGREES, 60, PERCENT)
-        drivetrain.drive_for(FORWARD, 153, INCHES, 75, PERCENT)
-        drivetrain.turn_to_heading(90, DEGREES, 60, PERCENT)
-        drivetrain.drive_for(FORWARD, 10, INCHES, 60, PERCENT)
-        drivetrain.turn_to_heading(0, DEGREES, 60, PERCENT)
-        drivetrain.drive_for(REVERSE, 10, INCHES, 60, PERCENT)
-
-        self.start_roller(100)
+        roller.spin(FORWARD)
         wait(0.5, SECONDS)
-        self.stop_roller()
+        roller.stop(COAST)
 
-        print(time.time() - start_time)
+        # Move towards and get the left roller
+        drivetrain.drive_for(FORWARD, 24, INCHES, 50, PERCENT)
+        drivetrain.turn_to_heading(180, DEGREES, 25, PERCENT)
 
-        return
+        drivetrain.drive(REVERSE, 50, PERCENT)
+        while True:
+            if back_distance_sensor.object_distance(INCHES) < ROLLER_DISTANCE:
+                drivetrain.stop(COAST)
+                break
 
-    def programming_skills_left(self):
+        roller.spin(FORWARD)
+        wait(0.5, SECONDS)
+        roller.stop(COAST)
+
+        # Move towards the high goal while intaking, and launch discs
+        drivetrain.drive_for(FORWARD, 7, INCHES, 50, PERCENT)
+        drivetrain.turn_to_heading(130, DEGREES, 25, PERCENT)
+        drivetrain.drive_for(FORWARD, 148, INCHES, 60, PERCENT)
+
+        drivetrain.turn_to_heading(270, DEGREES, 25, PERCENT)
+
+        # Move towards and get the top roller
+        drivetrain.drive(REVERSE, 50, PERCENT)
+        while True:
+            if back_distance_sensor.object_distance(INCHES) < ROLLER_DISTANCE:
+                drivetrain.stop(COAST)
+                break
+
+        roller.spin(FORWARD)
+        wait(0.5, SECONDS)
+        roller.stop(COAST)
+
+        # Move towards and get the right roller
+
+        drivetrain.drive_for(FORWARD, 24, INCHES, 50, PERCENT)
+        drivetrain.turn_to_heading(0, DEGREES, 25, PERCENT)
+
+        drivetrain.drive(REVERSE, 50, PERCENT)
+        while True:
+            if back_distance_sensor.object_distance(INCHES) < ROLLER_DISTANCE:
+                drivetrain.stop(COAST)
+                break
+
+        roller.spin(FORWARD)
+        wait(0.5, SECONDS)
+        roller.stop(COAST)
+
         pass
 
-    def programming_skills_right(self):
-        pass
+    def auton(self):
+        start_time = time.time()
+        self.autons[self.selected_auton]['action']()
+        auton_duration = time.time() - start_time
+        print('Auton took {} seconds'.format(auton_duration))
 
-    def move(self, target_distance, velocity=100):
-        print('moving', target_distance, velocity)
-
-        WHEEL_CIRCUMFERENCE = math.pi * 3.4
-
-        left_wheels.reset_position()
-        right_wheels.reset_position()
-        drivetrain.set_stopping(COAST)
-        drivetrain.set_drive_velocity(100, PERCENT)
-
-        distance_traveled = 0
-
-        drivetrain.drive(FORWARD, velocity, PERCENT)
-
-        while abs(distance_traveled - target_distance) > 1:
-            left_degrees = left_wheels.position(DEGREES)
-            right_degrees = right_wheels.position(DEGREES)
-            average_degrees = (left_degrees + right_degrees) / 2
-            distance_traveled = average_degrees / 360 * WHEEL_CIRCUMFERENCE
-
-            wait(0.02, SECONDS)
-
-        drivetrain.stop(BRAKE)
-
-    def turn(self, degrees):
-        pass
+    def select_auton(self):
+        if self.selected_auton == len(self.autons) - 1:
+            self.selected_auton = 0
+        else:
+            self.selected_auton += 1
 
     def start_intake(self):
         intaker.set_velocity(100, PERCENT)
@@ -127,13 +188,10 @@ class Robot():
         launcher.stop(COAST)
 
     def launch(self):
-        indexer.set_timeout(1, SECONDS)
-        indexer.set_max_torque(100, PERCENT)
-
         indexer.spin(FORWARD, 100, PERCENT)
-        wait(0.25, SECONDS)
+        wait(0.35, SECONDS)
         indexer.spin(REVERSE, 100, PERCENT)
-        wait(0.25, SECONDS)
+        wait(0.35, SECONDS)
         indexer.stop(COAST)
 
     def start_roller(self, velocity=100):
@@ -149,12 +207,11 @@ class Robot():
     def on_controller_changed(self):
         x_power = controller.axis1.position()
         y_power = controller.axis3.position()
+        left_velocity = y_power + x_power
+        right_velocity = y_power - x_power
 
-        left_wheels.set_velocity(y_power + x_power, PERCENT)
-        right_wheels.set_velocity(y_power - x_power, PERCENT)
-
-        left_wheels.spin(FORWARD)
-        right_wheels.spin(FORWARD)
+        left_wheels.spin(FORWARD, left_velocity, PERCENT)
+        right_wheels.spin(FORWARD, right_velocity, PERCENT)
 
     def update_brain(self):
         brain.screen.clear_screen()
@@ -186,9 +243,10 @@ class Robot():
         brain.screen.print('Battery: ', round(battery))
         brain.screen.next_row()
 
+        auton = self.autons[self.selected_auton]['name']
         brain.screen.set_pen_color(Color.WHITE)
         brain.screen.set_font(FontType.MONO60)
-        brain.screen.print('23322A (Orion)')
+        brain.screen.print(auton)
 
 if __name__ == '__main__':
     robot = Robot()
